@@ -45,7 +45,7 @@ SwaggerImporter = ->
         swaggerRequestMethod = swaggerRequestMethod.toUpperCase()
 
         # Create Paw request
-        pawRequest = context.createRequest swaggerRequestTitle, swaggerRequestMethod, swaggerRequestUrl
+        pawRequest = context.createRequest swaggerRequestTitle, swaggerRequestMethod, @expandEnvironmentVariables(context, swaggerRequestUrl)
 
         # Add Headers
         for key, value of headers
@@ -67,6 +67,47 @@ SwaggerImporter = ->
               pawRequest.multipartBody = formData
 
         return pawRequest
+    
+    @expandEnvironmentVariables = (context, string) ->
+            if string == null || string == undefined
+                string = ''
+            rx = /__/g;
+            items = string.split(rx)
+            if items.length < 2
+                return string
+            for i in [1...items.length] by 2
+                envVariable = @getEnvironmentVariable context, items[i]
+                varID = envVariable.id
+                dynamicValue = new DynamicValue "com.luckymarmot.EnvironmentVariableDynamicValue", {environmentVariable: varID}
+                items[i] = dynamicValue
+            return new DynamicString items...
+            
+    @getEnvironmentDomain = (context) ->
+            env = context.getEnvironmentDomainByName('Server')
+            if typeof env is 'undefined'
+                env = context.createEnvironmentDomain('Server')
+            return env
+
+    @getEnvironment = (environmentDomain) ->
+        env = environmentDomain.getEnvironmentByName('stage')
+        if typeof env is 'undefined'
+            env = environmentDomain.createEnvironment('stage')
+        return env
+
+    @getEnvironmentVariable = (context, name) ->
+        envD = @getEnvironmentDomain context, ''
+        variable = envD.getVariableByName(name)
+        if typeof variable is 'undefined'
+            env = @getEnvironment(envD)
+            varD = {}
+            varD[name] = ''
+            env.setVariablesValues(varD)
+            variable = envD.getVariableByName(name)
+        return variable
+        
+    # @getEnvDomainName = (name) ->
+        # serverVars = ['host', 'scheme', 'port']
+        # userVars = ['assetId']
 
     @has_basic_auth = (swaggerCollection, swaggerRequestValue) ->
       if swaggerRequestValue.security
@@ -141,9 +182,18 @@ SwaggerImporter = ->
         return swaggerRequestUrl
 
     @createPawGroup = (context, swaggerCollection, swaggerRequestPathName, swaggerRequestPathValue) ->
+        pawGroupName = swaggerRequestPathName
+        
+        # use resource name (first part of the path) as paw group name
+        rx = /(\/\w+?)\//
+        match = rx.exec swaggerRequestPathName
+        if match && match[1]
+            pawGroupName = match[1]
 
-        # Create Paw group
-        pawGroup = context.createRequestGroup swaggerRequestPathName
+        # Create Paw group for resource
+        pawGroup = context.getRequestGroupByName pawGroupName
+        if typeof pawGroup is 'undefined'
+            pawGroup = context.createRequestGroup pawGroupName
 
         for own swaggerRequestMethod, swaggerRequestValue of swaggerRequestPathValue
 
