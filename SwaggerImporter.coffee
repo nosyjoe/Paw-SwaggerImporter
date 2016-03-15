@@ -139,11 +139,39 @@ SwaggerImporter = ->
           swaggerRequestUrl = swaggerRequestUrl + '?' + swaggerRequestQueries.join('&')
 
         return swaggerRequestUrl
+        
+    @createOrGetPawGroup = (context, name) ->
+        pawGroup = context.getRequestGroupByName name
+        if typeof pawGroup is 'undefined'
+            pawGroup = context.createRequestGroup name
+        return pawGroup
+    
+    @createOrGetChildPawGroup = (context, parent, child) ->
+        result = parent.getChildGroups().find (s) -> s == child
+        if result
+            return result
+        else
+            result = @createOrGetPawGroup context, child
+            parent.appendChild result
+            return result
+    
+    @findPawGroup = (context, path, pathSegments, parent) ->
+        if !pathSegments
+            return parent
+            
+        segment = pathSegments.pop()
+        if segment
+            newPath = path + '/' + segment
+            return @findPawGroup context, newPath, pathSegments, @createOrGetChildPawGroup(context, parent, segment)
+        else
+            return parent
+    
+    @createPawGroup = (context, swaggerCollection, swaggerRequestPathName, swaggerRequestPathValue, pawRootGroup) ->
 
-    @createPawGroup = (context, swaggerCollection, swaggerRequestPathName, swaggerRequestPathValue) ->
-
-        # Create Paw group
-        pawGroup = context.createRequestGroup swaggerRequestPathName
+        # Create Paw groups
+        pawGroupName = swaggerRequestPathName        
+        pathSegments = swaggerRequestPathName.split('/').reverse().filter (s) -> s && s != ""
+        pawGroup = @findPawGroup context, '', pathSegments, pawRootGroup
 
         for own swaggerRequestMethod, swaggerRequestValue of swaggerRequestPathValue
 
@@ -186,10 +214,10 @@ SwaggerImporter = ->
           # Add Swagger groups
           for own swaggerRequestPathName, swaggerRequestPathValue of swaggerCollection.paths
 
-            pawGroup = @createPawGroup context, swaggerCollection, swaggerRequestPathName, swaggerRequestPathValue
+            pawGroup = @createPawGroup context, swaggerCollection, swaggerRequestPathName, swaggerRequestPathValue, pawRootGroup
 
             # Add group to root
-            pawRootGroup.appendChild pawGroup
+            # pawRootGroup.appendChild pawGroup
 
           return true
 
